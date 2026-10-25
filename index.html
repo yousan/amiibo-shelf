@@ -24,7 +24,8 @@ main{padding:12px;max-width:900px;margin:auto}
 .warn{background:#fff3cd;border-radius:10px;padding:10px;font-size:13px;margin:10px 0}
 .box{background:var(--card);border-radius:14px;padding:14px;margin:12px 0;box-shadow:0 1px 3px #0001}
 .filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
-.filters input,.filters select{padding:8px;border:1px solid #ccc;border-radius:8px;font-size:14px;flex:1 1 140px}
+.filters input,.filters select{padding:8px;border:1px solid #ccc;border-radius:8px;font-size:16px;flex:1 1 140px}
+input,select{font-size:16px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(105px,1fr));gap:8px}
 .it{background:var(--card);border-radius:12px;padding:6px;text-align:center;font-size:11px;position:relative;border:2px solid transparent;cursor:pointer}
 .it img{width:100%;height:90px;object-fit:contain}
@@ -43,6 +44,7 @@ dialog h3{margin:8px 0;text-align:center}
 .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .btns button{flex:1;padding:12px;border-radius:10px;border:1px solid #ccc;background:#fff;font-size:14px}
 .btns .pri{background:var(--red);color:#fff;border:0}
+dialog .btns button{flex:1 1 calc(50% - 8px);white-space:nowrap}
 .pick{max-height:45vh;overflow:auto;margin-top:8px}
 .pick div{display:flex;align-items:center;gap:8px;padding:6px;border-bottom:1px solid #eee;cursor:pointer}
 .pick img{width:40px;height:40px;object-fit:contain;margin:0}
@@ -258,19 +260,21 @@ function showDetail(id){
   $('#dlgIn').innerHTML=`<img src="${esc(a.image)}"><h3>${esc(nm(a))}</h3><p class="note" style="text-align:center;margin:0">${esc(a.name)}</p>
    <p class="note" style="text-align:center">${esc(ja(SERIES_JA,a.amiiboSeries))} / ${esc(ja(TYPE_JA,a.type))}<br>
    日本発売: ${esc(a.release?.jp||'不明')}<br>所持数: ${o?.count||0}${o?.uids?.length?`（NFC登録 ${o.uids.length}個）`:''}</p>
-   <input id="memo" placeholder="メモ" value="${esc(o?.memo||'')}" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:8px">
+   ${o?.memo?`<p style="text-align:center;margin:4px 0">📝 ${esc(o.memo)}</p>`:''}
    <div class="btns">
     <button class="pri" id="dPlus">＋ 所持に追加</button>
     <button id="dMinus" ${o?.count?'':'disabled'}>− 1つ減らす</button>
     <button id="dWish">${S.wish[id]?'⭐ ほしい解除':'☆ ほしい'}</button>
+    ${o?.count?'<button id="dMemo">📝 メモ</button>':''}
     <button id="dClose">閉じる</button></div>`;
-  $('#dPlus').onclick=()=>{addOwned(id); saveMemo(id); save(); showDetail(id);};
+  $('#dPlus').onclick=()=>{addOwned(id); save(); showDetail(id);};
   $('#dMinus').onclick=()=>{const o=S.owned[id]; o.count--; if(o.uids.length>o.count){const u=o.uids.pop(); delete S.uids[u];} if(o.count<=0) delete S.owned[id]; save(); showDetail(id);};
   $('#dWish').onclick=()=>{S.wish[id]?delete S.wish[id]:S.wish[id]=1; save(); showDetail(id);};
-  $('#dClose').onclick=()=>{saveMemo(id); save(); $('#dlg').close();};
+  $('#dClose').onclick=()=>$('#dlg').close();
+  if($('#dMemo')) $('#dMemo').onclick=()=>{ const m=prompt('メモ（空にすると消えます）', o.memo||''); if(m===null) return; o.memo=m.trim()||undefined; save(); showDetail(id); };
   if(!$('#dlg').open) $('#dlg').showModal();
+  document.activeElement?.blur();   // 開いたときに入力欄やボタンにフォーカスしない（iPhoneで画面が拡大されるため）
 }
-function saveMemo(id){ const m=$('#memo')?.value.trim(); if(S.owned[id]) S.owned[id].memo=m||undefined; }
 
 function askWhich(uid){
   $('#dlgIn').innerHTML=`<h3>はじめてのamiibo！</h3><p class="note">どのamiiboか選んでください（次回からは自動で判定します）<br>タグID: ${esc(uid)}</p>

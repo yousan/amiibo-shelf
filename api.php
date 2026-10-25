@@ -92,22 +92,23 @@ switch ($action) {
     $u = currentUser($db) ?? fail(401, 'ログインしてください');
     $st = $db->prepare('SELECT state, updated_at FROM users WHERE id = ?'); $st->execute([$u['id']]);
     $r = $st->fetch();
-    out(200, ['ok' => true, 'state' => $r['state'] ? json_decode($r['state'], true) : null, 'updatedAt' => $r['updated_at']]);
+    out(200, ['ok' => true, 'state' => $r['state'] ? json_decode($r['state']) : null, 'updatedAt' => $r['updated_at']]);
   }
 
   case 'save': {
     $u = currentUser($db) ?? fail(401, 'ログインしてください');
     $raw = file_get_contents('php://input') ?: '';
     if (strlen($raw) > MAX_STATE_BYTES) fail(413, 'データが大きすぎます');
-    $b = json_decode($raw, true);
-    if (!is_array($b) || !is_array($b['state'] ?? null)) fail(400, 'bad state');
+    // 連想配列にすると空の {} が [] に化けて、ほしいもの等が消える。オブジェクトのまま扱う
+    $b = json_decode($raw);
+    if (!is_object($b) || !is_object($b->state ?? null)) fail(400, 'bad state');
     // 別の端末や写真登録でサーバー側が先に更新されていたら、上書きせずに最新を返す（クライアントが混ぜて再送する）
-    if (array_key_exists('base', $b) && $b['base'] !== $u['updated_at']) {
+    if (property_exists($b, 'base') && $b->base !== $u['updated_at']) {
       $st = $db->prepare('SELECT state, updated_at FROM users WHERE id = ?'); $st->execute([$u['id']]); $r = $st->fetch();
-      out(409, ['ok' => false, 'error' => 'conflict', 'state' => $r['state'] ? json_decode($r['state'], true) : null, 'updatedAt' => $r['updated_at']]);
+      out(409, ['ok' => false, 'error' => 'conflict', 'state' => $r['state'] ? json_decode($r['state']) : null, 'updatedAt' => $r['updated_at']]);
     }
     $t = now();
-    $db->prepare('UPDATE users SET state = ?, updated_at = ? WHERE id = ?')->execute([json_encode($b['state'], JSON_UNESCAPED_UNICODE), $t, $u['id']]);
+    $db->prepare('UPDATE users SET state = ?, updated_at = ? WHERE id = ?')->execute([json_encode($b->state, JSON_UNESCAPED_UNICODE), $t, $u['id']]);
     out(200, ['ok' => true, 'updatedAt' => $t]);
   }
 

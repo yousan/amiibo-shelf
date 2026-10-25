@@ -98,7 +98,7 @@ dialog .btns button{flex:1 1 calc(50% - 8px);white-space:nowrap}
     <input id="q" placeholder="名前・シリーズで検索（例: しずえ、リンク）">
     <select id="fSeries"><option value="">すべてのシリーズ</option></select>
     <select id="fType"><option value="">すべての種類</option></select>
-    <select id="fOwn"><option value="">所持/未所持</option><option value="own">所持のみ</option><option value="not">未所持のみ</option><option value="wish">ほしいものだけ</option></select>
+    <select id="fOwn"><option value="">すべて</option><option value="own">所持のみ</option><option value="not">未所持のみ</option><option value="wish">ほしいものだけ</option></select>
     <select class="fSort"><option value="">発売日順</option><option value="no">ナンバー順</option><option value="name">名前順（あいうえお）</option></select>
   </div>
   <div class="note" id="allCount"></div>
@@ -154,12 +154,14 @@ let DB = [];                 // amiibo list
 const GUEST_KEY='amiiboShelf';
 let LS_KEY=GUEST_KEY;
 let S = load();              // user state
+// 前の版のサーバーが空の {} を [] にして返していた（ほしいもの等が保存されない原因）。配列なら {} に直す
+function fixState(st){ const s=Object.assign({owned:{},uids:{},wish:{},log:[]}, st||{}); for(const k of ['owned','uids','wish']) if(!s[k]||Array.isArray(s[k])) s[k]={}; if(!Array.isArray(s.log)) s.log=[]; return s; }
 function load(k=GUEST_KEY){
-  try{ return Object.assign({owned:{},uids:{},wish:{},log:[]}, JSON.parse(localStorage.getItem(k)||'{}')); }
+  try{ return fixState(JSON.parse(localStorage.getItem(k)||'{}')); }
   catch{ return {owned:{},uids:{},wish:{},log:[]}; }
 }
 function save(){ localStorage.setItem(LS_KEY, JSON.stringify(S)); render(); queueSync(); }
-function setState(st){ S=Object.assign({owned:{},uids:{},wish:{},log:[]}, st||{}); localStorage.setItem(LS_KEY, JSON.stringify(S)); render(); }
+function setState(st){ S=fixState(st); localStorage.setItem(LS_KEY, JSON.stringify(S)); render(); }
 const idOf = a => a.head + a.tail;
 let JA = {};   // 日本語名（ja.json。tools/build_ja.py で作る）。無いものは英語名のまま
 const nm = a => JA[idOf(a)] || a.name;
@@ -450,7 +452,7 @@ function mergeState(d){
 $('#impFile').onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text()); e.target.value=''; if(!j.data?.owned) throw 0;
   const total=Object.keys(j.data.owned).length;
   if(confirm(`${total}種類のamiiboが入っています。\n\nOK: 今のコレクションに追加する\nキャンセル: 追加しない（上書きを選べます）`)){ const n=mergeState(j.data); save(); toast(`${n}種類を新しく追加しました`); }
-  else if(confirm('今のデータを消して、このファイルの内容で上書きしますか？')){ S=Object.assign({owned:{},uids:{},wish:{},log:[]},j.data); save(); toast('上書きしました'); }
+  else if(confirm('今のデータを消して、このファイルの内容で上書きしますか？')){ S=fixState(j.data); save(); toast('上書きしました'); }
   }catch{toast('ファイルが不正です');}};
 $('#reload').onclick=()=>loadDB(true);
 $('#reset').onclick=()=>{if(confirm('コレクションを全部消します。よろしいですか？')){S={owned:{},uids:{},wish:{},log:[]}; save();}};

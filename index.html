@@ -147,13 +147,16 @@ const TYPE_JA = {Figure:'フィギュア',Card:'カード',Yarn:'毛糸',Band:'�
 const ja = (m,k)=>m[k]||k;
 
 let DB = [];                 // amiibo list
+// 端末内の保存先: ログインなしは 'amiiboShelf'、ログイン中はアカウントごとに 'amiiboShelf:<ユーザー名>'（人ごとに混ざらないように分ける）
+const GUEST_KEY='amiiboShelf';
+let LS_KEY=GUEST_KEY;
 let S = load();              // user state
-function load(){
-  try{ return Object.assign({owned:{},uids:{},wish:{},log:[]}, JSON.parse(localStorage.getItem('amiiboShelf')||'{}')); }
+function load(k=GUEST_KEY){
+  try{ return Object.assign({owned:{},uids:{},wish:{},log:[]}, JSON.parse(localStorage.getItem(k)||'{}')); }
   catch{ return {owned:{},uids:{},wish:{},log:[]}; }
 }
-function save(){ localStorage.setItem('amiiboShelf', JSON.stringify(S)); render(); queueSync(); }
-function setState(st){ S=Object.assign({owned:{},uids:{},wish:{},log:[]}, st||{}); localStorage.setItem('amiiboShelf', JSON.stringify(S)); render(); }
+function save(){ localStorage.setItem(LS_KEY, JSON.stringify(S)); render(); queueSync(); }
+function setState(st){ S=Object.assign({owned:{},uids:{},wish:{},log:[]}, st||{}); localStorage.setItem(LS_KEY, JSON.stringify(S)); render(); }
 const idOf = a => a.head + a.tail;
 let JA = {};   // 日本語名（ja.json。tools/build_ja.py で作る）。無いものは英語名のまま
 const nm = a => JA[idOf(a)] || a.name;
@@ -331,23 +334,24 @@ async function pushState(){
       try{ const j=await api('save',{state:S,base:SERVER_AT}); SERVER_AT=j.updatedAt; break; }
       catch(e){ if(e.body?.error!=='conflict') throw e;
         // サーバーの方が新しい（写真から追加された等）: サーバーの内容にこの端末の分を足して再送
-        const local=S; SERVER_AT=e.body.updatedAt; setState(e.body.state); mergeState(local); localStorage.setItem('amiiboShelf', JSON.stringify(S)); render(); }
+        const local=S; SERVER_AT=e.body.updatedAt; setState(e.body.state); mergeState(local); localStorage.setItem(LS_KEY, JSON.stringify(S)); render(); }
     }
     acctNote('☁ 保存しました '+new Date().toLocaleTimeString('ja-JP'));
   }
-  catch(e){ acctNote('⚠ サーバーに保存できませんでした: '+e.message); if(/ログイン/.test(e.message)){USER=null; drawAcct();} }
+  catch(e){ acctNote('⚠ サーバーに保存できませんでした: '+e.message); if(/ログイン/.test(e.message)){useAccount(null); drawAcct();} }
   finally{ syncing=false; }
 }
 async function pullState(){ const j=await api('load'); SERVER_AT=j.updatedAt; if(j.state) setState(j.state); return j; }
 async function overwriteServer(){ const j=await api('save',{state:S}); SERVER_AT=j.updatedAt; }
-// ログイン直後: サーバーと端末のどちらを残すか決める
+function useAccount(user){ USER=user; LS_KEY=user?GUEST_KEY+':'+user.name:GUEST_KEY; S=load(LS_KEY); SERVER_AT=null; }
+// ログイン直後: アカウントのデータに切り替える。ログインなしで登録していた分は、聞いてから足す（勝手に混ぜない）
 async function afterLogin(user){
-  USER=user; const j=await api('load'); SERVER_AT=j.updatedAt;
-  if(!j.state){ await overwriteServer(); toast('この端末のデータをアカウントに保存しました'); }
-  else if(hasData(S) && JSON.stringify(j.state.owned)!==JSON.stringify(S.owned)
-    && !confirm('アカウントにはすでにデータがあります。\n\nOK: アカウントのデータを使う\nキャンセル: この端末のデータでアカウントを上書きする')){
-    await overwriteServer(); toast('この端末のデータで上書きしました'); }
-  else { setState(j.state); toast('アカウントのデータを読み込みました'); }
+  const guest=load(GUEST_KEY);
+  useAccount(user); await pullState();
+  const n=Object.keys(guest.owned).length;
+  if(n && confirm(`この端末に、ログインせずに登録したamiiboが${n}種類あります。\nこのアカウント（${user.name}）に追加しますか？\n\n※ ほかの人が登録したものなら「キャンセル」を押してください`)){
+    mergeState(guest); save(); localStorage.removeItem(GUEST_KEY); toast(`${n}種類を追加しました`);
+  } else toast(`${user.name} のデータを読み込みました`);
   drawAcct();
 }
 // ---- 写真で登録 ----
@@ -388,7 +392,7 @@ function drawAcct(){
   if(USER){
     el.innerHTML=`<p>☁ <b>${esc(USER.name)}</b> でログイン中。変更は自動でサーバーに保存されます。</p><p id="acctMsg"></p><div class="btns"><button id="aPull">サーバーから読み直す</button><button id="aOut">ログアウト</button></div>`;
     $('#aPull').onclick=async()=>{try{await pullState(); toast('読み直しました');}catch(e){toast(e.message);}};
-    $('#aOut').onclick=async()=>{await api('logout',{}).catch(()=>{}); USER=null; drawAcct(); toast('ログアウトしました（この端末のデータは残ります）');};
+    $('#aOut').onclick=async()=>{await api('logout',{}).catch(()=>{}); useAccount(null); drawAcct(); toast('ログアウトしました');};
     return;
   }
   el.innerHTML=`<p>ログインすると、スマホとPCなど複数の端末で同じコレクションを見られます。ログインしなくてもこの端末だけで使えます。</p>
@@ -400,7 +404,12 @@ function drawAcct(){
   $('#aIn').onclick=go('login'); $('#aReg').onclick=go('register');
 }
 async function initAcct(){
-  try{ const j=await api('me'); apiOK=true; if(j.user){ USER=j.user; await pullState(); } }catch{ apiOK=false; }
+  try{ const j=await api('me'); apiOK=true;
+    if(j.user){
+      // 前の版はログイン中のデータも 'amiiboShelf' に入れていた。アカウント用の保存先がまだ無ければ、それはこの人のデータの写しなので消す
+      if(localStorage.getItem(GUEST_KEY+':'+j.user.name)===null) localStorage.removeItem(GUEST_KEY);
+      useAccount(j.user); await pullState();
+    } }catch{ apiOK=false; }
   drawAcct();
 }
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && USER && !syncing && !syncTimer) pullState().then(drawPhotos).catch(()=>{}); });

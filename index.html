@@ -97,6 +97,7 @@ dialog .btns button{flex:1 1 calc(50% - 8px);white-space:nowrap}
   <div class="filters">
     <input id="q" placeholder="名前・シリーズで検索（例: しずえ、リンク）">
     <select id="fSeries"><option value="">すべてのシリーズ</option></select>
+    <select id="fSpecies" hidden><option value="">すべてのどうぶつ</option></select>
     <select id="fType"><option value="">すべての種類</option></select>
     <select id="fOwn"><option value="">すべて</option><option value="own">所持のみ</option><option value="not">未所持のみ</option><option value="wish">ほしいものだけ</option></select>
     <select class="fSort"><option value="">発売日順</option><option value="no">ナンバー順</option><option value="name">名前順（あいうえお）</option></select>
@@ -163,10 +164,11 @@ function load(k=GUEST_KEY){
 function save(){ localStorage.setItem(LS_KEY, JSON.stringify(S)); render(); queueSync(); }
 function setState(st){ S=fixState(st); localStorage.setItem(LS_KEY, JSON.stringify(S)); render(); }
 const idOf = a => a.head + a.tail;
-let JA = {};   // 日本語名（ja.json。tools/build_ja.py で作る）。無いものは英語名のまま
+let JA = {}, SPECIES = {};   // SPECIES: どうぶつの森の種類（species.json。tools/build_species.py で作る）
+// JA: 日本語名（ja.json。tools/build_ja.py で作る）。無いものは英語名のまま
 const nm = a => JA[idOf(a)] || a.name;
 const fold = s => String(s).toLowerCase().replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));   // カタカナ→ひらがな
-const hay = a => fold([nm(a), a.name, a.character, a.amiiboSeries, a.gameSeries, ja(SERIES_JA,a.amiiboSeries), NO[idOf(a)]?.l||'', S.owned[idOf(a)]?.memo||''].join(' '));
+const hay = a => fold([nm(a), a.name, a.character, a.amiiboSeries, a.gameSeries, ja(SERIES_JA,a.amiiboSeries), NO[idOf(a)]?.l||'', SPECIES[idOf(a)]||'', S.owned[idOf(a)]?.memo||''].join(' '));
 const byId = id => DB.find(a=>idOf(a)===id);
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -174,6 +176,10 @@ function toast(t){ const e=$('#toast'); e.textContent=t; e.classList.add('on'); 
 
 async function loadDB(force){
   fetch('ja.json').then(r=>r.json()).then(j=>{JA=j; render();}).catch(()=>{});
+  fetch('species.json').then(r=>r.json()).then(j=>{SPECIES=j;
+    const order=[...new Set(Object.values(j))].filter(x=>x!=='スペシャル').sort((a,b)=>a.localeCompare(b,'ja')).concat('スペシャル');
+    $('#fSpecies').innerHTML='<option value="">すべてのどうぶつ</option>'+order.map(x=>`<option value="${x}">${x==='スペシャル'?'スペシャル（住民以外）':x}</option>`).join('');
+    render();}).catch(()=>{});
   const cached = localStorage.getItem('amiiboDB');
   if(cached && !force){ DB = JSON.parse(cached).amiibo; afterDB(); }
   try{
@@ -225,11 +231,12 @@ function render(){
   const ownedIds=Object.keys(S.owned).filter(k=>S.owned[k].count>0);
   $('#stat').textContent=`所持 ${ownedIds.length} / ${DB.length}種類`+(USER?`　☁ ${USER.name}`:'');
   // all
-  const q=fold($('#q').value.trim()), fs=$('#fSeries').value, ft=$('#fType').value, fo=$('#fOwn').value;
+  const q=fold($('#q').value.trim()), fs=$('#fSeries').value, fsp=fs==='Animal Crossing'?$('#fSpecies').value:'', ft=$('#fType').value, fo=$('#fOwn').value;
   const list=sortList(DB.filter(a=>{
     const id=idOf(a), own=S.owned[id]?.count>0;
     if(fs&&a.amiiboSeries!==fs) return false;
     if(ft&&a.type!==ft) return false;
+    if(fsp&&SPECIES[id]!==fsp) return false;
     if(fo==='own'&&!own) return false; if(fo==='not'&&own) return false; if(fo==='wish'&&!S.wish[id]) return false;
     if(q&&!hay(a).includes(q)) return false;
     return true;
@@ -426,9 +433,9 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('on',p.id==='p-'+b.dataset.p));
 });
-const firstPage=()=>{SHOWN=STEP; render();};   // 絞り込み・並び替えを変えたら先頭200件に戻す
+const firstPage=()=>{SHOWN=STEP; $('#fSpecies').hidden=$('#fSeries').value!=='Animal Crossing'; render();};   // 絞り込み・並び替えを変えたら先頭200件に戻す
 new IntersectionObserver(es=>{ if(es[0].isIntersecting && ALL_LEN>SHOWN){ SHOWN+=STEP; render(); } },{rootMargin:'600px'}).observe($('#more'));
-['#q','#fSeries','#fType','#fOwn','#p-all .fSort'].forEach(s=>$(s)[s==='#q'?'oninput':'onchange']=firstPage);
+['#q','#fSeries','#fSpecies','#fType','#fOwn','#p-all .fSort'].forEach(s=>$(s)[s==='#q'?'oninput':'onchange']=firstPage);
 $('#qMine').oninput=render; $('#p-mine .fSort').onchange=render;
 
 ['#gridAll','#gridMine'].forEach(s=>$(s).onclick=e=>{const d=e.target.closest('[data-id]'); if(d) showDetail(d.dataset.id);});

@@ -71,6 +71,14 @@ dialog h3{margin:8px 0;text-align:center}
     ※ ブラウザの Web NFC ではamiiboの中身（キャラ情報）までは読めないため、タグ固有のIDで覚える方式です。<br>
     ※ NFCが使えない端末（iPhoneなど）でも「全amiibo」タブからタップで所持登録できます。
   </div>
+  <div class="box" id="photoBox" hidden>
+    <b>📷 写真で登録（iPhone の人はこちら）</b>
+    <p class="note">amiibo の写真を送っておくと、あとでまとめて判別して所持に追加します。カードは番号と名前が見えるように何枚か並べてOK。フィギュアは1体ずつ全身が写るように撮ってください。<br>送ったあと、Discord でミナに「写真判別して」と頼んでね。</p>
+    <button class="big" id="photoBtn">📷 写真を撮る / 選ぶ</button>
+    <input type="file" id="photoFile" accept="image/*" multiple hidden>
+    <p class="note" id="photoMsg"></p>
+    <div class="grid" id="photoList"></div>
+  </div>
   <div class="box"><b>スキャン履歴</b><div class="log" id="log">まだありません</div></div>
 </section>
 
@@ -282,32 +290,73 @@ const LOGIN_SITE = 'https://l4tp.org/amiibo/';
 let USER=null, apiOK=false, syncTimer=null, syncing=false;
 async function api(action, body){
   const r = await fetch('api.php?action='+action, body===undefined ? {credentials:'same-origin'} :
+    body instanceof FormData ? {method:'POST', credentials:'same-origin', headers:{'X-Amiibo':'1'}, body} :
     {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json','X-Amiibo':'1'}, body:JSON.stringify(body)});
   const j = await r.json().catch(()=>({ok:false,error:'通信エラー'}));
-  if(!j.ok) throw new Error(j.error||'エラー'); return j;
+  if(!j.ok){ const e=new Error(j.error||'エラー'); e.body=j; throw e; } return j;
 }
+let SERVER_AT=null;   // サーバー側の最終更新。保存時に送って、他で更新されていたら混ぜ直す
 const hasData = st => st && Object.keys(st.owned||{}).length + Object.keys(st.wish||{}).length > 0;
 function queueSync(){ if(!USER) return; clearTimeout(syncTimer); syncTimer=setTimeout(pushState, 800); }
 async function pushState(){
   syncTimer=null; if(!USER) return; syncing=true;
-  try{ await api('save',{state:S}); acctNote('☁ 保存しました '+new Date().toLocaleTimeString('ja-JP')); }
+  try{
+    for(let i=0;i<3;i++){
+      try{ const j=await api('save',{state:S,base:SERVER_AT}); SERVER_AT=j.updatedAt; break; }
+      catch(e){ if(e.body?.error!=='conflict') throw e;
+        // サーバーの方が新しい（写真から追加された等）: サーバーの内容にこの端末の分を足して再送
+        const local=S; SERVER_AT=e.body.updatedAt; setState(e.body.state); mergeState(local); localStorage.setItem('amiiboShelf', JSON.stringify(S)); render(); }
+    }
+    acctNote('☁ 保存しました '+new Date().toLocaleTimeString('ja-JP'));
+  }
   catch(e){ acctNote('⚠ サーバーに保存できませんでした: '+e.message); if(/ログイン/.test(e.message)){USER=null; drawAcct();} }
   finally{ syncing=false; }
 }
-async function pullState(){ const j=await api('load'); if(j.state) setState(j.state); return j; }
+async function pullState(){ const j=await api('load'); SERVER_AT=j.updatedAt; if(j.state) setState(j.state); return j; }
+async function overwriteServer(){ const j=await api('save',{state:S}); SERVER_AT=j.updatedAt; }
 // ログイン直後: サーバーと端末のどちらを残すか決める
 async function afterLogin(user){
-  USER=user; const j=await api('load');
-  if(!j.state){ await api('save',{state:S}); toast('この端末のデータをアカウントに保存しました'); }
+  USER=user; const j=await api('load'); SERVER_AT=j.updatedAt;
+  if(!j.state){ await overwriteServer(); toast('この端末のデータをアカウントに保存しました'); }
   else if(hasData(S) && JSON.stringify(j.state.owned)!==JSON.stringify(S.owned)
     && !confirm('アカウントにはすでにデータがあります。\n\nOK: アカウントのデータを使う\nキャンセル: この端末のデータでアカウントを上書きする')){
-    await api('save',{state:S}); toast('この端末のデータで上書きしました'); }
+    await overwriteServer(); toast('この端末のデータで上書きしました'); }
   else { setState(j.state); toast('アカウントのデータを読み込みました'); }
   drawAcct();
 }
+// ---- 写真で登録 ----
+async function shrink(file){
+  try{
+    const img=await new Promise((ok,ng)=>{const i=new Image(); i.onload=()=>ok(i); i.onerror=ng; i.src=URL.createObjectURL(file);});
+    const k=Math.min(1, 2000/Math.max(img.naturalWidth,img.naturalHeight));
+    const c=document.createElement('canvas'); c.width=Math.round(img.naturalWidth*k); c.height=Math.round(img.naturalHeight*k);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(img.src);
+    return await new Promise(ok=>c.toBlob(b=>ok(b||file),'image/jpeg',0.85));
+  }catch{ return file; }
+}
+const PHOTO_ST={pending:'判別待ち',done:'登録済み'};
+async function drawPhotos(){
+  const box=$('#photoBox'); if(!apiOK){ box.hidden=true; return; } box.hidden=false;
+  if(!USER){ $('#photoList').innerHTML=''; $('#photoMsg').textContent='写真で登録するにはログインが必要です（設定タブ）'; return; }
+  try{ const j=await api('photos');
+    $('#photoList').innerHTML=j.photos.map(p=>`<div class="it ${p.status==='done'?'own':''}"><img loading="lazy" src="api.php?action=photo&id=${p.id}" alt="" style="filter:none;opacity:1"><span class="n">${PHOTO_ST[p.status]||esc(p.status)}${p.note?'<br>'+esc(p.note):''}</span></div>`).join('');
+    const n=j.photos.filter(p=>p.status==='pending').length;
+    $('#photoMsg').textContent=n?`判別待ち ${n}枚。Discord でミナに「写真判別して」と頼んでね`:'';
+  }catch(e){ $('#photoMsg').textContent='⚠ '+e.message; }
+}
+$('#photoBtn').onclick=()=>{ if(!USER){ toast('先にログインしてください'); document.querySelector('nav button[data-p=set]').click(); return; } $('#photoFile').click(); };
+$('#photoFile').onchange=async e=>{
+  const files=[...e.target.files]; e.target.value=''; let ok=0;
+  for(const [i,f] of files.entries()){
+    $('#photoMsg').textContent=`送信中… ${i+1}/${files.length}`;
+    const fd=new FormData(); fd.append('photo', await shrink(f), 'photo.jpg');
+    try{ await api('upload', fd); ok++; }catch(err){ toast('⚠ '+err.message); break; }
+  }
+  if(ok) toast(`${ok}枚送りました`); drawPhotos();
+};
 function acctNote(t){ const e=$('#acctMsg'); if(e) e.textContent=t; }
 function drawAcct(){
-  render();
+  render(); drawPhotos();
   const el=$('#acctIn');
   if(!apiOK){ el.innerHTML=`この版は端末内だけに保存します。ログインして複数の端末で使いたいときは <a href="${LOGIN_SITE}">ログイン対応版</a> を開いてください（データはエクスポート→インポートで移せます）。`; return; }
   if(USER){
@@ -328,7 +377,7 @@ async function initAcct(){
   try{ const j=await api('me'); apiOK=true; if(j.user){ USER=j.user; await pullState(); } }catch{ apiOK=false; }
   drawAcct();
 }
-document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && USER && !syncing && !syncTimer) pullState().catch(()=>{}); });
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && USER && !syncing && !syncTimer) pullState().then(drawPhotos).catch(()=>{}); });
 
 // ---- UI wiring ----
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
@@ -361,7 +410,8 @@ $('#impFile').onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].
   }catch{toast('ファイルが不正です');}};
 $('#reload').onclick=()=>loadDB(true);
 $('#reset').onclick=()=>{if(confirm('コレクションを全部消します。よろしいですか？')){S={owned:{},uids:{},wish:{},log:[]}; save();}};
-if(!nfcSupported()){ $('#nfcWarn').hidden=false; $('#nfcWarn').innerHTML='この端末/ブラウザはWeb NFCに未対応です（対応: Android の Chrome）。「全amiibo」タブから手動で登録できます。'; }
+if(!nfcSupported()){ $('#nfcWarn').hidden=false; $('#nfcWarn').innerHTML='この端末/ブラウザはWeb NFCに未対応です（対応: Android の Chrome）。写真で登録するか、「全amiibo」タブから手動で登録できます。';
+  $('#p-scan').prepend($('#photoBox')); }   // iPhone などでは写真登録を一番上に
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 loadDB(); initAcct();
 </script>

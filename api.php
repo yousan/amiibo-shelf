@@ -25,9 +25,15 @@ $db->exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000;');
 $db->exec('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT UNIQUE COLLATE NOCASE NOT NULL, pass TEXT NOT NULL, state TEXT, updated_at TEXT, created_at TEXT NOT NULL)');
 $db->exec('CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL)');
 $db->exec('CREATE TABLE IF NOT EXISTS attempts (ip TEXT NOT NULL, at INTEGER NOT NULL)');
+// 写真で登録: アプリは保存するだけ。判別は管理者（ミナ）が admin.php で行う
+$db->exec("CREATE TABLE IF NOT EXISTS photos (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, file TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', note TEXT, created_at TEXT NOT NULL)");
+$photoDir = dirname($dbPath) . '/photos';
+const PHOTOS_PER_DAY = 100;
+const MAX_PHOTO_BYTES = 8_000_000;
 
 function body(): array { $j = json_decode(file_get_contents('php://input') ?: '{}', true); return is_array($j) ? $j : []; }
-function now(): string { return gmdate('Y-m-d\TH:i:s\Z'); }
+// 同じ秒に2回保存しても競合判定できるようミリ秒まで持つ
+function now(): string { $t = microtime(true); return gmdate('Y-m-d\TH:i:s', (int)$t) . sprintf('.%03dZ', (int)(fmod($t, 1) * 1000)); }
 
 function currentUser(PDO $db): ?array {
   $t = $_COOKIE[COOKIE] ?? '';
@@ -95,9 +101,50 @@ switch ($action) {
     if (strlen($raw) > MAX_STATE_BYTES) fail(413, 'データが大きすぎます');
     $b = json_decode($raw, true);
     if (!is_array($b) || !is_array($b['state'] ?? null)) fail(400, 'bad state');
+    // 別の端末や写真登録でサーバー側が先に更新されていたら、上書きせずに最新を返す（クライアントが混ぜて再送する）
+    if (array_key_exists('base', $b) && $b['base'] !== $u['updated_at']) {
+      $st = $db->prepare('SELECT state, updated_at FROM users WHERE id = ?'); $st->execute([$u['id']]); $r = $st->fetch();
+      out(409, ['ok' => false, 'error' => 'conflict', 'state' => $r['state'] ? json_decode($r['state'], true) : null, 'updatedAt' => $r['updated_at']]);
+    }
     $t = now();
     $db->prepare('UPDATE users SET state = ?, updated_at = ? WHERE id = ?')->execute([json_encode($b['state'], JSON_UNESCAPED_UNICODE), $t, $u['id']]);
     out(200, ['ok' => true, 'updatedAt' => $t]);
+  }
+
+  case 'upload': {
+    $u = currentUser($db) ?? fail(401, 'ログインしてください');
+    $st = $db->prepare("SELECT COUNT(*) FROM photos WHERE user_id = ? AND created_at > ?");
+    $st->execute([$u['id'], gmdate('Y-m-d\TH:i:s', time() - 86400)]);
+    if ((int)$st->fetchColumn() >= PHOTOS_PER_DAY) fail(429, '今日はこれ以上送れません（1日' . PHOTOS_PER_DAY . '枚まで）');
+    $f = $_FILES['photo'] ?? null;
+    if (!$f || $f['error'] !== UPLOAD_ERR_OK) fail(400, '写真を受け取れませんでした');
+    if ($f['size'] > MAX_PHOTO_BYTES) fail(413, '写真が大きすぎます');
+    $info = @getimagesize($f['tmp_name']);
+    $ext = [IMAGETYPE_JPEG => 'jpg', IMAGETYPE_PNG => 'png', IMAGETYPE_WEBP => 'webp'][$info[2] ?? 0] ?? null;
+    if (!$ext) fail(400, 'JPEG/PNG/WebPの画像を送ってください');
+    $dir = $photoDir . '/' . $u['id'];
+    if (!is_dir($dir)) mkdir($dir, 0700, true);
+    $name = gmdate('Ymd-His') . '-' . bin2hex(random_bytes(4)) . '.' . $ext;
+    if (!move_uploaded_file($f['tmp_name'], "$dir/$name")) fail(500, '保存に失敗しました');
+    $db->prepare('INSERT INTO photos (user_id, file, created_at) VALUES (?, ?, ?)')->execute([$u['id'], "{$u['id']}/$name", now()]);
+    out(200, ['ok' => true, 'id' => (int)$db->lastInsertId()]);
+  }
+
+  case 'photos': {
+    $u = currentUser($db) ?? fail(401, 'ログインしてください');
+    $st = $db->prepare('SELECT id, status, note, created_at FROM photos WHERE user_id = ? ORDER BY id DESC LIMIT 100'); $st->execute([$u['id']]);
+    out(200, ['ok' => true, 'photos' => $st->fetchAll()]);
+  }
+
+  case 'photo': {
+    $u = currentUser($db) ?? fail(401, 'ログインしてください');
+    $st = $db->prepare('SELECT file FROM photos WHERE id = ? AND user_id = ?'); $st->execute([(int)($_GET['id'] ?? 0), $u['id']]);
+    $p = $st->fetch() ?: fail(404, 'not found');
+    $path = "$photoDir/{$p['file']}";
+    if (!is_file($path)) fail(404, 'not found');
+    header('Content-Type: ' . (getimagesize($path)['mime'] ?? 'image/jpeg'));
+    header('Cache-Control: private, max-age=86400');
+    readfile($path); exit;
   }
 
   default:

@@ -46,7 +46,6 @@ dialog h3{margin:8px 0;text-align:center}
 .pick{max-height:45vh;overflow:auto;margin-top:8px}
 .pick div{display:flex;align-items:center;gap:8px;padding:6px;border-bottom:1px solid #eee;cursor:pointer}
 .pick img{width:40px;height:40px;object-fit:contain;margin:0}
-.pager{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0}.pager button{padding:10px 16px;border-radius:10px;border:1px solid #ccc;background:#fff;font-size:14px}.pager button:disabled{opacity:.35}.pager span{font-size:13px;color:var(--sub)}
 .log{font-size:12px;color:var(--sub);white-space:pre-wrap}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;transition:.3s;pointer-events:none;z-index:9}
 .toast.on{opacity:1}
@@ -101,9 +100,8 @@ dialog h3{margin:8px 0;text-align:center}
     <select class="fSort"><option value="">発売日順</option><option value="no">ナンバー順</option><option value="name">名前順（あいうえお）</option></select>
   </div>
   <div class="note" id="allCount"></div>
-  <div class="pager" id="pagerTop"></div>
   <div class="grid" id="gridAll"></div>
-  <div class="pager" id="pagerBot"></div>
+  <div class="note" id="more" style="text-align:center;padding:16px"></div>
 </section>
 
 <section class="panel" id="p-set">
@@ -211,7 +209,7 @@ function sortList(l, how){
   if(how==='no') return [...l].sort((a,b)=>(NO[idOf(a)]?.k??1e9)-(NO[idOf(b)]?.k??1e9));   // 番号の無いものは後ろに発売日順
   return l;
 }
-let PAGE_NO=0; const PAGE=200;   // 全amiibo は200件ずつ表示
+const STEP=200; let SHOWN=STEP, ALL_LEN=0;   // 全amiibo は200件ずつ。下までスクロールしたら続きを出す
 function card(a){
   const id=idOf(a), o=S.owned[id], n=o?.count||0;
   return `<div class="it ${n?'own':''}" data-id="${id}">
@@ -232,11 +230,10 @@ function render(){
     if(q&&!hay(a).includes(q)) return false;
     return true;
   }), $('#p-all .fSort').value);
-  const pages=Math.max(1,Math.ceil(list.length/PAGE)); PAGE_NO=Math.min(PAGE_NO,pages-1);
+  ALL_LEN=list.length;
   $('#allCount').textContent=`${list.length}件`;
-  $('#gridAll').innerHTML=list.slice(PAGE_NO*PAGE,(PAGE_NO+1)*PAGE).map(card).join('');
-  const pg=pages>1?`<button data-go="-1" ${PAGE_NO?'':'disabled'}>← 前へ</button><span>${PAGE_NO+1} / ${pages}ページ</span><button data-go="1" ${PAGE_NO<pages-1?'':'disabled'}>次へ →</button>`:'';
-  $('#pagerTop').innerHTML=pg; $('#pagerBot').innerHTML=pg;
+  $('#gridAll').innerHTML=list.slice(0,SHOWN).map(card).join('');
+  $('#more').textContent=list.length>SHOWN?`続きを読み込み中…（${SHOWN} / ${list.length}件）`:'';
   // mine
   const qm=fold($('#qMine').value.trim());
   const mine=sortList(DB.filter(a=>S.owned[idOf(a)]?.count>0 && (!qm||hay(a).includes(qm))), $('#p-mine .fSort').value);
@@ -426,10 +423,11 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('on',p.id==='p-'+b.dataset.p));
 });
-const firstPage=()=>{PAGE_NO=0; render();};   // 絞り込み・並び替えを変えたら1ページ目に戻す
+const firstPage=()=>{SHOWN=STEP; render();};   // 絞り込み・並び替えを変えたら先頭200件に戻す
+new IntersectionObserver(es=>{ if(es[0].isIntersecting && ALL_LEN>SHOWN){ SHOWN+=STEP; render(); } },{rootMargin:'600px'}).observe($('#more'));
 ['#q','#fSeries','#fType','#fOwn','#p-all .fSort'].forEach(s=>$(s)[s==='#q'?'oninput':'onchange']=firstPage);
 $('#qMine').oninput=render; $('#p-mine .fSort').onchange=render;
-['#pagerTop','#pagerBot'].forEach(s=>$(s).onclick=e=>{const b=e.target.closest('[data-go]'); if(!b) return; PAGE_NO+=+b.dataset.go; render(); $('#pagerTop').scrollIntoView({block:'start'});});
+
 ['#gridAll','#gridMine'].forEach(s=>$(s).onclick=e=>{const d=e.target.closest('[data-id]'); if(d) showDetail(d.dataset.id);});
 $('#scanBtn').onclick=startScan;
 $('#exp').onclick=()=>{const b=new Blob([JSON.stringify({app:'amiibo-shelf',v:1,data:S},null,1)],{type:'application/json'});

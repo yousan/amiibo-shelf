@@ -94,6 +94,10 @@ dialog h3{margin:8px 0;text-align:center}
 </section>
 
 <section class="panel" id="p-set">
+  <div class="box" id="acct">
+    <b>アカウント（端末間で同期）</b>
+    <div id="acctIn" class="note">確認中…</div>
+  </div>
   <div class="box">
     <b>バックアップ</b>
     <p class="note">データはこの端末のブラウザ内だけに保存されます。機種変更前にはエクスポートしてください。</p>
@@ -138,7 +142,8 @@ function load(){
   try{ return Object.assign({owned:{},uids:{},wish:{},log:[]}, JSON.parse(localStorage.getItem('amiiboShelf')||'{}')); }
   catch{ return {owned:{},uids:{},wish:{},log:[]}; }
 }
-function save(){ localStorage.setItem('amiiboShelf', JSON.stringify(S)); render(); }
+function save(){ localStorage.setItem('amiiboShelf', JSON.stringify(S)); render(); queueSync(); }
+function setState(st){ S=Object.assign({owned:{},uids:{},wish:{},log:[]}, st||{}); localStorage.setItem('amiiboShelf', JSON.stringify(S)); render(); }
 const idOf = a => a.head + a.tail;
 const byId = id => DB.find(a=>idOf(a)===id);
 const $ = s => document.querySelector(s);
@@ -175,7 +180,7 @@ function card(a){
 function render(){
   if(!DB.length) return;
   const ownedIds=Object.keys(S.owned).filter(k=>S.owned[k].count>0);
-  $('#stat').textContent=`所持 ${ownedIds.length} / ${DB.length}種類`;
+  $('#stat').textContent=`所持 ${ownedIds.length} / ${DB.length}種類`+(USER?`　☁ ${USER.name}`:'');
   // all
   const q=$('#q').value.trim().toLowerCase(), fs=$('#fSeries').value, ft=$('#fType').value, fo=$('#fOwn').value;
   const list=DB.filter(a=>{
@@ -272,6 +277,59 @@ function onTag(serial){
   else askWhich(uid);
 }
 
+// ---- アカウント（api.php があるサーバーでだけ有効。GitHub Pages 版では端末内保存のみ） ----
+const LOGIN_SITE = 'https://l4tp.org/amiibo/';
+let USER=null, apiOK=false, syncTimer=null, syncing=false;
+async function api(action, body){
+  const r = await fetch('api.php?action='+action, body===undefined ? {credentials:'same-origin'} :
+    {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json','X-Amiibo':'1'}, body:JSON.stringify(body)});
+  const j = await r.json().catch(()=>({ok:false,error:'通信エラー'}));
+  if(!j.ok) throw new Error(j.error||'エラー'); return j;
+}
+const hasData = st => st && Object.keys(st.owned||{}).length + Object.keys(st.wish||{}).length > 0;
+function queueSync(){ if(!USER) return; clearTimeout(syncTimer); syncTimer=setTimeout(pushState, 800); }
+async function pushState(){
+  syncTimer=null; if(!USER) return; syncing=true;
+  try{ await api('save',{state:S}); acctNote('☁ 保存しました '+new Date().toLocaleTimeString('ja-JP')); }
+  catch(e){ acctNote('⚠ サーバーに保存できませんでした: '+e.message); if(/ログイン/.test(e.message)){USER=null; drawAcct();} }
+  finally{ syncing=false; }
+}
+async function pullState(){ const j=await api('load'); if(j.state) setState(j.state); return j; }
+// ログイン直後: サーバーと端末のどちらを残すか決める
+async function afterLogin(user){
+  USER=user; const j=await api('load');
+  if(!j.state){ await api('save',{state:S}); toast('この端末のデータをアカウントに保存しました'); }
+  else if(hasData(S) && JSON.stringify(j.state.owned)!==JSON.stringify(S.owned)
+    && !confirm('アカウントにはすでにデータがあります。\n\nOK: アカウントのデータを使う\nキャンセル: この端末のデータでアカウントを上書きする')){
+    await api('save',{state:S}); toast('この端末のデータで上書きしました'); }
+  else { setState(j.state); toast('アカウントのデータを読み込みました'); }
+  drawAcct();
+}
+function acctNote(t){ const e=$('#acctMsg'); if(e) e.textContent=t; }
+function drawAcct(){
+  render();
+  const el=$('#acctIn');
+  if(!apiOK){ el.innerHTML=`この版は端末内だけに保存します。ログインして複数の端末で使いたいときは <a href="${LOGIN_SITE}">ログイン対応版</a> を開いてください（データはエクスポート→インポートで移せます）。`; return; }
+  if(USER){
+    el.innerHTML=`<p>☁ <b>${esc(USER.name)}</b> でログイン中。変更は自動でサーバーに保存されます。</p><p id="acctMsg"></p><div class="btns"><button id="aPull">サーバーから読み直す</button><button id="aOut">ログアウト</button></div>`;
+    $('#aPull').onclick=async()=>{try{await pullState(); toast('読み直しました');}catch(e){toast(e.message);}};
+    $('#aOut').onclick=async()=>{await api('logout',{}).catch(()=>{}); USER=null; drawAcct(); toast('ログアウトしました（この端末のデータは残ります）');};
+    return;
+  }
+  el.innerHTML=`<p>ログインすると、スマホとPCなど複数の端末で同じコレクションを見られます。ログインしなくてもこの端末だけで使えます。</p>
+    <input id="aName" placeholder="ユーザー名" autocomplete="username" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;margin-bottom:6px">
+    <input id="aPass" type="password" placeholder="パスワード（6文字以上）" autocomplete="current-password" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px">
+    <div class="btns"><button class="pri" id="aIn">ログイン</button><button id="aReg">新規登録</button></div>
+    <p class="note">※ メールアドレスは不要です。パスワードを忘れると戻せないので、メモしておいてください。</p><p id="acctMsg" class="note"></p>`;
+  const go=act=>async()=>{ try{ const j=await api(act,{name:$('#aName').value,pass:$('#aPass').value}); await afterLogin(j.user); }catch(e){ acctNote('⚠ '+e.message); } };
+  $('#aIn').onclick=go('login'); $('#aReg').onclick=go('register');
+}
+async function initAcct(){
+  try{ const j=await api('me'); apiOK=true; if(j.user){ USER=j.user; await pullState(); } }catch{ apiOK=false; }
+  drawAcct();
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && USER && !syncing && !syncTimer) pullState().catch(()=>{}); });
+
 // ---- UI wiring ----
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
@@ -289,7 +347,7 @@ $('#reload').onclick=()=>loadDB(true);
 $('#reset').onclick=()=>{if(confirm('コレクションを全部消します。よろしいですか？')){S={owned:{},uids:{},wish:{},log:[]}; save();}};
 if(!nfcSupported()){ $('#nfcWarn').hidden=false; $('#nfcWarn').innerHTML='この端末/ブラウザはWeb NFCに未対応です（対応: Android の Chrome）。「全amiibo」タブから手動で登録できます。'; }
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
-loadDB();
+loadDB(); initAcct();
 </script>
 </body>
 </html>

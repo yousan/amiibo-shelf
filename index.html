@@ -37,13 +37,14 @@ input,select{font-size:16px}
 .prog{margin:4px 0 10px}
 .bar{height:8px;background:#ddd;border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ok)}
 .row{display:flex;justify-content:space-between;font-size:13px;margin-top:6px}
-dialog{border:0;border-radius:16px;padding:0;width:min(92vw,480px);max-height:85vh}
+dialog{border:0;border-radius:16px;padding:0;width:min(92vw,480px);max-height:85vh;overflow:auto}
 dialog .in{padding:16px}
 dialog img{width:140px;height:140px;object-fit:contain;display:block;margin:auto}
 dialog h3{margin:8px 0;text-align:center}
 .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .btns button{flex:1;padding:12px;border-radius:10px;border:1px solid #ccc;background:#fff;font-size:14px}
 .btns .pri{background:var(--red);color:#fff;border:0}
+dialog .use{font-size:13px;line-height:1.5;margin:8px 0;background:#f6f6f8;border-radius:10px;padding:8px 10px}dialog .use ul{margin:4px 0;padding-left:18px}dialog .use summary{margin-top:6px;color:var(--red)}dialog .use .g{margin:8px 0 0;font-weight:bold}dialog .use .note{margin:6px 0 0;font-size:11px}
 dialog .btns button{flex:1 1 calc(50% - 8px);white-space:nowrap}
 .pick{max-height:45vh;overflow:auto;margin-top:8px}
 .pick div{display:flex;align-items:center;gap:8px;padding:6px;border-bottom:1px solid #eee;cursor:pointer}
@@ -164,7 +165,7 @@ function load(k=GUEST_KEY){
 function save(){ localStorage.setItem(LS_KEY, JSON.stringify(S)); render(); queueSync(); }
 function setState(st){ S=fixState(st); localStorage.setItem(LS_KEY, JSON.stringify(S)); render(); }
 const idOf = a => a.head + a.tail;
-let JA = {}, SPECIES = {};   // SPECIES: どうぶつの森の種類（species.json。tools/build_species.py で作る）
+let JA = {}, SPECIES = {}, USAGE = null;   // USAGE: ゲームでの使いみち（usage.json。tools/build_usage.py で作る）   // SPECIES: どうぶつの森の種類（species.json。tools/build_species.py で作る）
 // JA: 日本語名（ja.json。tools/build_ja.py で作る）。無いものは英語名のまま
 const nm = a => JA[idOf(a)] || a.name;
 const fold = s => String(s).toLowerCase().replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));   // カタカナ→ひらがな
@@ -176,6 +177,7 @@ function toast(t){ const e=$('#toast'); e.textContent=t; e.classList.add('on'); 
 
 async function loadDB(force){
   fetch('ja.json').then(r=>r.json()).then(j=>{JA=j; render();}).catch(()=>{});
+  fetch('usage.json').then(r=>r.json()).then(j=>{USAGE=j;}).catch(()=>{});
   fetch('species.json').then(r=>r.json()).then(j=>{SPECIES=j;
     const order=[...new Set(Object.values(j))].filter(x=>x!=='スペシャル').sort((a,b)=>a.localeCompare(b,'ja')).concat('スペシャル');
     $('#fSpecies').innerHTML='<option value="">すべてのどうぶつ</option>'+order.map(x=>`<option value="${x}">${x==='スペシャル'?'スペシャル（住民以外）':x}</option>`).join('');
@@ -264,11 +266,21 @@ function addOwned(id, uid){
   if(uid) S.uids[uid]=id;
   delete S.wish[id];
 }
+function usageHtml(id){
+  if(!USAGE) return '';
+  const list=(USAGE.m[id]||[]).map(([g,us])=>[USAGE.g[g],us.map(u=>USAGE.u[u])]);
+  const ac=list.find(([g])=>g==='あつまれ どうぶつの森'), rest=list.filter(x=>x!==ac);
+  const li=us=>`<ul>${us.map(u=>`<li>${esc(u)}</li>`).join('')}</ul>`;
+  return `<div class="use"><b>🏝 あつまれ どうぶつの森で読むと</b>${ac?li(ac[1]):'<p class="note">あつもりでは使えません</p>'}
+    ${rest.length?`<details><summary>ほかのゲームでの使いみち（${rest.length}本）</summary>${rest.map(([g,us])=>`<p class="g">${esc(g)}</p>${li(us)}`).join('')}</details>`:''}
+    <p class="note">出典: AmiiboAPI のデータを日本語に訳したもの。Switch のゲームのみ</p></div>`;
+}
 function showDetail(id){
   const a=byId(id); if(!a) return; const o=S.owned[id];
   $('#dlgIn').innerHTML=`<img src="${esc(a.image)}"><h3>${esc(nm(a))}</h3><p class="note" style="text-align:center;margin:0">${esc(a.name)}</p>
    <p class="note" style="text-align:center">${esc(ja(SERIES_JA,a.amiiboSeries))} / ${esc(ja(TYPE_JA,a.type))}<br>
    日本発売: ${esc(a.release?.jp||'不明')}<br>所持数: ${o?.count||0}${o?.uids?.length?`（NFC登録 ${o.uids.length}個）`:''}</p>
+   ${usageHtml(id)}
    <div class="btns">
     <button class="pri" id="dPlus">＋ 所持に追加</button>
     <button id="dMinus" ${o?.count?'':'disabled'}>− 1つ減らす</button>

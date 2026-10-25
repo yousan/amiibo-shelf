@@ -92,7 +92,7 @@ dialog h3{margin:8px 0;text-align:center}
 
 <section class="panel" id="p-all">
   <div class="filters">
-    <input id="q" placeholder="名前・シリーズで検索（英語）">
+    <input id="q" placeholder="名前・シリーズで検索（例: しずえ、リンク）">
     <select id="fSeries"><option value="">すべてのシリーズ</option></select>
     <select id="fType"><option value="">すべての種類</option></select>
     <select id="fOwn"><option value="">所持/未所持</option><option value="own">所持のみ</option><option value="not">未所持のみ</option><option value="wish">ほしいものだけ</option></select>
@@ -153,12 +153,17 @@ function load(){
 function save(){ localStorage.setItem('amiiboShelf', JSON.stringify(S)); render(); queueSync(); }
 function setState(st){ S=Object.assign({owned:{},uids:{},wish:{},log:[]}, st||{}); localStorage.setItem('amiiboShelf', JSON.stringify(S)); render(); }
 const idOf = a => a.head + a.tail;
+let JA = {};   // 日本語名（ja.json。tools/build_ja.py で作る）。無いものは英語名のまま
+const nm = a => JA[idOf(a)] || a.name;
+const fold = s => String(s).toLowerCase().replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));   // カタカナ→ひらがな
+const hay = a => fold([nm(a), a.name, a.character, a.amiiboSeries, a.gameSeries, ja(SERIES_JA,a.amiiboSeries), S.owned[idOf(a)]?.memo||''].join(' '));
 const byId = id => DB.find(a=>idOf(a)===id);
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function toast(t){ const e=$('#toast'); e.textContent=t; e.classList.add('on'); clearTimeout(toast.t); toast.t=setTimeout(()=>e.classList.remove('on'),2200); }
 
 async function loadDB(force){
+  fetch('ja.json').then(r=>r.json()).then(j=>{JA=j; render();}).catch(()=>{});
   const cached = localStorage.getItem('amiiboDB');
   if(cached && !force){ DB = JSON.parse(cached).amiibo; afterDB(); }
   try{
@@ -183,27 +188,27 @@ function card(a){
   const id=idOf(a), o=S.owned[id], n=o?.count||0;
   return `<div class="it ${n?'own':''}" data-id="${id}">
     ${S.wish[id]?'<span class="wish">⭐</span>':''}${n>1?`<span class="badge">×${n}</span>`:''}
-    <img loading="lazy" src="${esc(a.image)}" alt=""><span class="n">${esc(o?.memo||a.name)}</span></div>`;
+    <img loading="lazy" src="${esc(a.image)}" alt=""><span class="n">${esc(nm(a))}</span></div>`;
 }
 function render(){
   if(!DB.length) return;
   const ownedIds=Object.keys(S.owned).filter(k=>S.owned[k].count>0);
   $('#stat').textContent=`所持 ${ownedIds.length} / ${DB.length}種類`+(USER?`　☁ ${USER.name}`:'');
   // all
-  const q=$('#q').value.trim().toLowerCase(), fs=$('#fSeries').value, ft=$('#fType').value, fo=$('#fOwn').value;
+  const q=fold($('#q').value.trim()), fs=$('#fSeries').value, ft=$('#fType').value, fo=$('#fOwn').value;
   const list=DB.filter(a=>{
     const id=idOf(a), own=S.owned[id]?.count>0;
     if(fs&&a.amiiboSeries!==fs) return false;
     if(ft&&a.type!==ft) return false;
     if(fo==='own'&&!own) return false; if(fo==='not'&&own) return false; if(fo==='wish'&&!S.wish[id]) return false;
-    if(q&&!(a.name+' '+a.character+' '+a.amiiboSeries+' '+a.gameSeries+' '+ja(SERIES_JA,a.amiiboSeries)).toLowerCase().includes(q)) return false;
+    if(q&&!hay(a).includes(q)) return false;
     return true;
   });
   $('#allCount').textContent=`${list.length}件`;
   $('#gridAll').innerHTML=list.slice(0,400).map(card).join('')+(list.length>400?'<p class="note">400件まで表示。絞り込んでください</p>':'');
   // mine
-  const qm=$('#qMine').value.trim().toLowerCase();
-  const mine=DB.filter(a=>S.owned[idOf(a)]?.count>0 && (!qm||(a.name+(S.owned[idOf(a)].memo||'')).toLowerCase().includes(qm)));
+  const qm=fold($('#qMine').value.trim());
+  const mine=DB.filter(a=>S.owned[idOf(a)]?.count>0 && (!qm||hay(a).includes(qm)));
   $('#gridMine').innerHTML=mine.length?mine.map(card).join(''):'<p class="note">まだ登録がありません。スキャンするか「全amiibo」からタップして登録してね。</p>';
   // progress (series with at least 1 owned)
   const by={}; DB.forEach(a=>{const s=a.amiiboSeries;(by[s]??={t:0,o:0}).t++; if(S.owned[idOf(a)]?.count>0) by[s].o++;});
@@ -222,10 +227,10 @@ function addOwned(id, uid){
 }
 function showDetail(id){
   const a=byId(id); if(!a) return; const o=S.owned[id];
-  $('#dlgIn').innerHTML=`<img src="${esc(a.image)}"><h3>${esc(a.name)}</h3>
+  $('#dlgIn').innerHTML=`<img src="${esc(a.image)}"><h3>${esc(nm(a))}</h3><p class="note" style="text-align:center;margin:0">${esc(a.name)}</p>
    <p class="note" style="text-align:center">${esc(ja(SERIES_JA,a.amiiboSeries))} / ${esc(ja(TYPE_JA,a.type))}<br>
    日本発売: ${esc(a.release?.jp||'不明')}<br>所持数: ${o?.count||0}${o?.uids?.length?`（NFC登録 ${o.uids.length}個）`:''}</p>
-   <input id="memo" placeholder="メモ・日本語名など" value="${esc(o?.memo||'')}" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:8px">
+   <input id="memo" placeholder="メモ" value="${esc(o?.memo||'')}" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:8px">
    <div class="btns">
     <button class="pri" id="dPlus">＋ 所持に追加</button>
     <button id="dMinus" ${o?.count?'':'disabled'}>− 1つ減らす</button>
@@ -241,15 +246,15 @@ function saveMemo(id){ const m=$('#memo')?.value.trim(); if(S.owned[id]) S.owned
 
 function askWhich(uid){
   $('#dlgIn').innerHTML=`<h3>はじめてのamiibo！</h3><p class="note">どのamiiboか選んでください（次回からは自動で判定します）<br>タグID: ${esc(uid)}</p>
-   <input id="pq" placeholder="名前で検索（例: mario, link, kirby）" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px">
+   <input id="pq" placeholder="名前で検索（例: マリオ、しずえ）" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px">
    <select id="pt" style="width:100%;margin-top:6px;padding:8px;border-radius:8px"><option value="">すべての種類</option>${Object.keys(TYPE_JA).map(t=>`<option value="${t}">${TYPE_JA[t]}</option>`).join('')}</select>
    <div class="pick" id="pl"></div><div class="btns"><button id="pc">キャンセル</button></div>`;
-  const draw=()=>{const q=$('#pq').value.trim().toLowerCase(), t=$('#pt').value;
-    const l=DB.filter(a=>(!t||a.type===t)&&(!q||(a.name+' '+a.character+' '+a.amiiboSeries+' '+ja(SERIES_JA,a.amiiboSeries)).toLowerCase().includes(q))).slice(0,80);
-    $('#pl').innerHTML=l.map(a=>`<div data-id="${idOf(a)}"><img loading="lazy" src="${esc(a.image)}"><span>${esc(a.name)}<br><small class="note">${esc(ja(SERIES_JA,a.amiiboSeries))}・${esc(ja(TYPE_JA,a.type))}</small></span></div>`).join('')||'<p class="note">見つかりません</p>';};
+  const draw=()=>{const q=fold($('#pq').value.trim()), t=$('#pt').value;
+    const l=DB.filter(a=>(!t||a.type===t)&&(!q||hay(a).includes(q))).slice(0,80);
+    $('#pl').innerHTML=l.map(a=>`<div data-id="${idOf(a)}"><img loading="lazy" src="${esc(a.image)}"><span>${esc(nm(a))}<br><small class="note">${esc(ja(SERIES_JA,a.amiiboSeries))}・${esc(ja(TYPE_JA,a.type))}</small></span></div>`).join('')||'<p class="note">見つかりません</p>';};
   $('#pq').oninput=draw; $('#pt').onchange=draw; draw();
   $('#pl').onclick=e=>{const d=e.target.closest('[data-id]'); if(!d) return; const id=d.dataset.id;
-    addOwned(id,uid); logLine(`登録: ${byId(id).name}`); save(); toast(`${byId(id).name} を登録しました`); showDetail(id);};
+    addOwned(id,uid); logLine(`登録: ${nm(byId(id))}`); save(); toast(`${nm(byId(id))} を登録しました`); showDetail(id);};
   $('#pc').onclick=()=>$('#dlg').close();
   if(!$('#dlg').open) $('#dlg').showModal();
   setTimeout(()=>$('#pq').focus(),100);
@@ -281,7 +286,7 @@ function onTag(serial){
   if(uid===lastUid && Date.now()-lastAt<3000) return; lastUid=uid; lastAt=Date.now();
   navigator.vibrate?.(80);
   const id=S.uids[uid];
-  if(id && byId(id)){ const a=byId(id); logLine(`読取: ${a.name}`); save(); toast(`✅ ${a.name}（登録済み）`); showDetail(id); }
+  if(id && byId(id)){ const a=byId(id); logLine(`読取: ${nm(a)}`); save(); toast(`✅ ${nm(a)}（登録済み）`); showDetail(id); }
   else askWhich(uid);
 }
 

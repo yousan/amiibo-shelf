@@ -1,5 +1,5 @@
 // アプリ本体をキャッシュしてオフラインでも開けるようにする（amiibo一覧はlocalStorageに保存済み）
-const C = 'amiibo-shelf-v4';
+const C = 'amiibo-shelf-v5';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 self.addEventListener('install', e => e.waitUntil(caches.open(C).then(c => c.addAll(FILES))));
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k))))));

@@ -341,8 +341,24 @@ $('#scanBtn').onclick=startScan;
 $('#exp').onclick=()=>{const b=new Blob([JSON.stringify({app:'amiibo-shelf',v:1,data:S},null,1)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=`amiibo-shelf-${new Date().toISOString().slice(0,10)}.json`; a.click();};
 $('#imp').onclick=()=>$('#impFile').click();
-$('#impFile').onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text()); if(!j.data?.owned) throw 0;
-  if(confirm('現在のデータを上書きしてインポートしますか？')){S=Object.assign({owned:{},uids:{},wish:{},log:[]},j.data); save(); toast('インポートしました');}}catch{toast('ファイルが不正です');}};
+// 追加: 今のコレクションに足す（同じamiiboは個数の多い方を採用するので、同じファイルを2回読んでも増えない）
+function mergeState(d){
+  let n=0;
+  for(const [id,o] of Object.entries(d.owned||{})){
+    const cur=S.owned[id];
+    if(!cur){ S.owned[id]={count:o.count||1,uids:[...(o.uids||[])],addedAt:o.addedAt||new Date().toISOString(),memo:o.memo}; n++; }
+    else{ cur.uids=[...new Set([...(cur.uids||[]),...(o.uids||[])])]; cur.count=Math.max(cur.count,o.count||1,cur.uids.length); cur.memo??=o.memo; }
+    delete S.wish[id];
+  }
+  Object.assign(S.uids, d.uids||{});
+  for(const id of Object.keys(d.wish||{})) if(!S.owned[id]) S.wish[id]=1;
+  return n;
+}
+$('#impFile').onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text()); e.target.value=''; if(!j.data?.owned) throw 0;
+  const total=Object.keys(j.data.owned).length;
+  if(confirm(`${total}種類のamiiboが入っています。\n\nOK: 今のコレクションに追加する\nキャンセル: 追加しない（上書きを選べます）`)){ const n=mergeState(j.data); save(); toast(`${n}種類を新しく追加しました`); }
+  else if(confirm('今のデータを消して、このファイルの内容で上書きしますか？')){ S=Object.assign({owned:{},uids:{},wish:{},log:[]},j.data); save(); toast('上書きしました'); }
+  }catch{toast('ファイルが不正です');}};
 $('#reload').onclick=()=>loadDB(true);
 $('#reset').onclick=()=>{if(confirm('コレクションを全部消します。よろしいですか？')){S={owned:{},uids:{},wish:{},log:[]}; save();}};
 if(!nfcSupported()){ $('#nfcWarn').hidden=false; $('#nfcWarn').innerHTML='この端末/ブラウザはWeb NFCに未対応です（対応: Android の Chrome）。「全amiibo」タブから手動で登録できます。'; }

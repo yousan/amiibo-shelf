@@ -260,18 +260,15 @@ function showDetail(id){
   $('#dlgIn').innerHTML=`<img src="${esc(a.image)}"><h3>${esc(nm(a))}</h3><p class="note" style="text-align:center;margin:0">${esc(a.name)}</p>
    <p class="note" style="text-align:center">${esc(ja(SERIES_JA,a.amiiboSeries))} / ${esc(ja(TYPE_JA,a.type))}<br>
    日本発売: ${esc(a.release?.jp||'不明')}<br>所持数: ${o?.count||0}${o?.uids?.length?`（NFC登録 ${o.uids.length}個）`:''}</p>
-   ${o?.memo?`<p style="text-align:center;margin:4px 0">📝 ${esc(o.memo)}</p>`:''}
    <div class="btns">
     <button class="pri" id="dPlus">＋ 所持に追加</button>
     <button id="dMinus" ${o?.count?'':'disabled'}>− 1つ減らす</button>
     <button id="dWish">${S.wish[id]?'⭐ ほしい解除':'☆ ほしい'}</button>
-    ${o?.count?'<button id="dMemo">📝 メモ</button>':''}
     <button id="dClose">閉じる</button></div>`;
   $('#dPlus').onclick=()=>{addOwned(id); save(); showDetail(id);};
   $('#dMinus').onclick=()=>{const o=S.owned[id]; o.count--; if(o.uids.length>o.count){const u=o.uids.pop(); delete S.uids[u];} if(o.count<=0) delete S.owned[id]; save(); showDetail(id);};
   $('#dWish').onclick=()=>{S.wish[id]?delete S.wish[id]:S.wish[id]=1; save(); showDetail(id);};
   $('#dClose').onclick=()=>$('#dlg').close();
-  if($('#dMemo')) $('#dMemo').onclick=()=>{ const m=prompt('メモ（空にすると消えます）', o.memo||''); if(m===null) return; o.memo=m.trim()||undefined; save(); showDetail(id); };
   if(!$('#dlg').open) $('#dlg').showModal();
   document.activeElement?.blur();   // 開いたときに入力欄やボタンにフォーカスしない（iPhoneで画面が拡大されるため）
 }

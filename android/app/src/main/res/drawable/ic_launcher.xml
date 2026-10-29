@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- icon.svg と同じ絵 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="512" android:viewportHeight="512">
+    <path android:fillColor="#d62828" android:pathData="M96,0h320a96,96 0,0 1,96 96v320a96,96 0,0 1,-96 96h-320a96,96 0,0 1,-96 -96v-320a96,96 0,0 1,96 -96z" />
+    <path android:fillColor="#ffffff" android:pathData="M106,380a150,44 0,1 0,300 0a150,44 0,1 0,-300 0z" />
+    <path android:fillColor="#ffffff" android:pathData="M146,220a110,110 0,1 0,220 0a110,110 0,1 0,-220 0z" />
+    <path android:strokeColor="#d62828" android:strokeWidth="16" android:strokeLineCap="round"
+        android:pathData="M196,220a60,60 0,0 1,120 0M216,220a40,40 0,0 1,80 0" />
+</vector>

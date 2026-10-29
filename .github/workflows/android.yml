@@ -1,0 +1,42 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', '.github/workflows/android.yml']
+  pull_request:
+    paths: ['android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Build
+        working-directory: android
+        run: gradle assembleDebug --no-daemon
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk amiibo-shelf.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amiibo-shelf-apk
+          path: amiibo-shelf.apk
+      - name: Release (main のみ)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete android-latest -y --cleanup-tag || true
+          gh release create android-latest amiibo-shelf.apk --prerelease \
+            --title "Androidアプリ（最新ビルド）" \
+            --notes "Android のスマホでダウンロードしてインストールしてください。提供元不明のアプリのインストールを許可する必要があります。"
+    permissions:
+      contents: write

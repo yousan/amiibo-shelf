@@ -26,7 +26,7 @@ import android.widget.Toast;
  * かざしただけでどの amiibo か分かる。読んだ結果は window.onNativeTag(uid, amiiboId) で Web 側に渡す。
  */
 public class MainActivity extends Activity {
-    static final String START_URL = "https://l4tp.org/amiibo/";
+    static final String START_URL = "https://amiibo.l4tp.org/";
     static final String[] OWN_HOSTS = {"l4tp.org", "amiibo.l4tp.org"};
     static final int FILE_REQ = 1;
 

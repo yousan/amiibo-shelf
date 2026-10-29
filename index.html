@@ -348,7 +348,7 @@ function onTag(serial, aid){
 }
 
 // ---- アカウント（api.php があるサーバーでだけ有効。GitHub Pages 版では端末内保存のみ） ----
-const LOGIN_SITE = 'https://l4tp.org/amiibo/';
+const LOGIN_SITE = 'https://amiibo.l4tp.org/';
 let USER=null, apiOK=false, syncTimer=null, syncing=false;
 async function api(action, body){
   const r = await fetch('api.php?action='+action, body===undefined ? {credentials:'same-origin'} :

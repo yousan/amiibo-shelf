@@ -98,7 +98,7 @@ public class MainActivity extends Activity {
     }
 
     void onTag(Tag tag) {
-        String uid = hex(tag.getId(), 0, tag.getId().length);
+        String uid = serial(tag.getId());
         String amiiboId = "";
         try {
             byte[] p = readPages(tag, 21);
@@ -122,6 +122,13 @@ public class MainActivity extends Activity {
         NfcA a = NfcA.get(tag);
         if (a == null) return null;
         try { a.connect(); return a.transceive(new byte[]{0x30, (byte) page}); } finally { a.close(); }
+    }
+
+    /** Web NFC の serialNumber と同じ形 (04:a1:b2:…) にする。今までに紐付けたタグとそのまま照合できる */
+    static String serial(byte[] b) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < b.length; i++) sb.append(i == 0 ? "" : ":").append(String.format("%02x", b[i]));
+        return sb.toString();
     }
 
     static String hex(byte[] b, int from, int to) {

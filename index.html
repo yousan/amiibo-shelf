@@ -313,8 +313,12 @@ function logLine(t){ S.log.push(`${new Date().toLocaleString('ja-JP')}  ${t}`); 
 
 // ---- NFC ----
 let reader=null, ctrl=null, lastUid='', lastAt=0;
-function nfcSupported(){ return 'NDEFReader' in window; }
+// Androidアプリ版（android/）の中では、NFCはアプリが常に読んで onNativeTag で渡してくる
+const NATIVE = window.AmiiboAndroid || null;
+function nfcSupported(){ return 'NDEFReader' in window || !!(NATIVE && NATIVE.hasNfc()); }
+window.onNativeTag=(uid,aid)=>onTag(uid,aid);
 async function startScan(){
+  if(NATIVE){ toast(NATIVE.nfcEnabled() ? 'アプリを開いている間は、いつでもかざすだけで読み取れます' : '端末のNFCがオフです。設定でNFCをオンにしてください'); return; }
   if(!nfcSupported()){ $('#nfcWarn').hidden=false; $('#nfcWarn').innerHTML='この端末/ブラウザはWeb NFCに未対応です。<b>Android の Chrome</b> で開いてください（iPhoneは非対応）。<br>「全amiibo」タブから手動登録はできます。'; return; }
   if(ctrl){ ctrl.abort(); ctrl=null; $('#scanBtn').textContent='📡 NFCスキャンを開始'; $('#scanBtn').classList.remove('off'); return; }
   try{
@@ -330,11 +334,14 @@ async function startScan(){
       : e.name==='NotReadableError' ? '端末のNFCがオフです。設定でNFCをオンにしてください。' : 'NFCを開始できませんでした: '+e.message;
   }
 }
-function onTag(serial){
+function onTag(serial, aid){
   if(!serial){ toast('タグIDが取得できませんでした'); return; }
   const uid=serial.toUpperCase();
   if(uid===lastUid && Date.now()-lastAt<3000) return; lastUid=uid; lastAt=Date.now();
-  navigator.vibrate?.(80);
+  if(!NATIVE) navigator.vibrate?.(80);
+  // アプリ版はタグの中身から amiibo ID が分かるので、一覧から選ばずに登録する
+  if(aid && byId(aid.toLowerCase()) && !S.uids[uid]){ const id=aid.toLowerCase(), a=byId(id), had=!!S.owned[id];
+    addOwned(id,uid); logLine(`読取: ${nm(a)}`); save(); toast(had?`✅ ${nm(a)}（もう1つ追加）`:`✅ ${nm(a)} を登録しました`); showDetail(id); return; }
   const id=S.uids[uid];
   if(id && byId(id)){ const a=byId(id); logLine(`読取: ${nm(a)}`); save(); toast(`✅ ${nm(a)}（登録済み）`); showDetail(id); }
   else askWhich(uid);
@@ -475,6 +482,7 @@ $('#impFile').onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].
   }catch{toast('ファイルが不正です');}};
 $('#reload').onclick=()=>loadDB(true);
 $('#reset').onclick=()=>{if(confirm('コレクションを全部消します。よろしいですか？')){S={owned:{},uids:{},wish:{},log:[]}; save();}};
+if(NATIVE){ $('#scanBtn').textContent='📡 かざすだけで読み取れます'; }
 if(!nfcSupported()){ $('#nfcWarn').hidden=false; $('#nfcWarn').innerHTML='この端末/ブラウザはWeb NFCに未対応です（対応: Android の Chrome）。写真で登録するか、「全amiibo」タブから手動で登録できます。';
   $('#p-scan').prepend($('#photoBox')); }   // iPhone などでは写真登録を一番上に
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});

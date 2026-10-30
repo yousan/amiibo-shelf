@@ -2,8 +2,8 @@
 
 amiibo を NFC でスキャンしてコレクション管理する、日本語・無料・登録不要のWebアプリ。
 
-- ログイン対応版（端末間で同期）: https://amiibo.l4tp.org/
-- 端末内保存のみ版: https://yousan.github.io/amiibo-shelf/
+- https://amiibo.l4tp.org/
+- Androidアプリ版: 下の「Androidアプリ版」
 
 - Android の Chrome: amiibo をかざして所持登録（Web NFC）
   - はじめてのamiiboは一覧から1回選ぶ → 次からはタグIDで自動判定

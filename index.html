@@ -6,6 +6,17 @@
 <meta name="theme-color" content="#d62828">
 <link rel="manifest" href="manifest.webmanifest">
 <title>amiibo棚 — NFCでかんたんコレクション管理</title>
+<meta name="description" content="amiibo棚は、amiiboのコレクションを管理できる無料の日本語Webアプリ。登録不要・広告なし。Androidはスマホにかざすだけ（NFC）、iPhoneでも一覧からタップで登録できます。どうぶつの森のamiiboカードを含む全950種以上に対応。">
+<link rel="canonical" href="https://amiibo.l4tp.org/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="amiibo棚">
+<meta property="og:title" content="amiibo棚 — 無料・日本語のamiiboコレクション管理">
+<meta property="og:description" content="amiibo棚は、amiiboのコレクションを管理できる無料の日本語Webアプリ。登録不要・広告なし。Androidはスマホにかざすだけ（NFC）、iPhoneでも一覧からタップで登録できます。どうぶつの森のamiiboカードを含む全950種以上に対応。">
+<meta property="og:url" content="https://amiibo.l4tp.org/">
+<meta property="og:image" content="https://amiibo.l4tp.org/og.png">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"amiibo棚","url":"https://amiibo.l4tp.org/","applicationCategory":"UtilitiesApplication","operatingSystem":"Android, iOS, Windows, macOS","inLanguage":"ja","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"JPY"},"description":"amiibo棚は、amiiboのコレクションを管理できる無料の日本語Webアプリ。登録不要・広告なし。Androidはスマホにかざすだけ（NFC）、iPhoneでも一覧からタップで登録できます。どうぶつの森のamiiboカードを含む全950種以上に対応。"}</script>
 <style>
 :root{--red:#d62828;--bg:#f6f6f8;--card:#fff;--ink:#222;--sub:#777;--ok:#2a9d8f}
 *{box-sizing:border-box}
@@ -83,6 +94,15 @@ dialog .btns button{flex:1 1 calc(50% - 8px);white-space:nowrap}
     <div class="grid" id="photoList"></div>
   </div>
   <div class="box"><b>スキャン履歴</b><div class="log" id="log">まだありません</div></div>
+  <div class="box note" id="about">
+    <h2 style="font-size:15px;margin:0 0 6px;color:var(--ink)">amiibo棚について</h2>
+    amiibo棚は、持っている amiibo を記録して集め具合を確かめられる、<b>無料・日本語・登録不要</b>の amiibo コレクション管理アプリです。広告もありません。<br>
+    ・<b>Android</b>: amiibo をスマホの背面にかざすだけで所持登録（NFC）。<a href="https://github.com/yousan/amiibo-shelf/releases/tag/android-latest" target="_blank" rel="noopener">Androidアプリ版</a>なら、初めての amiibo も自動で判定します<br>
+    ・<b>iPhone</b>: NFC は使えませんが、「全amiibo」から探してタップで登録できます。写真を送って登録することもできます<br>
+    ・どうぶつの森の amiibo カード（番号順の並び替え、ネコ・イヌなど種類での絞り込み）、スマブラ、スプラトゥーン、ゼルダの伝説など全950種以上に対応<br>
+    ・シリーズごとの達成率、ほしいものリスト、あつまれ どうぶつの森などで読み込んだときの使いみちを表示<br>
+    ・ログインすると、スマホと PC など複数の端末で同じコレクションを使えます
+  </div>
 </section>
 
 <section class="panel" id="p-mine">
